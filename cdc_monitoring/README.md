@@ -17,6 +17,43 @@ This project includes:
 | **Grafana** | Metrics visualization and dashboards |
 | **Python Consumer** | Consumes order events, aggregates metrics, pushes to PushGateway |
 
+### Architecture Diagram
+
+```mermaid
+flowchart LR
+  subgraph Source
+    PG[(PostgreSQL\norders)]
+  end
+
+  subgraph CDC
+    DBZ[Debezium\nConnector]
+  end
+
+  subgraph Streaming
+    RP[Redpanda\nTopic]
+  end
+
+  subgraph Aggregation
+    PY[Python\nConsumer]
+  end
+
+  subgraph Metrics
+    PGW[PushGateway]
+    PROM[Prometheus]
+  end
+
+  subgraph Monitoring
+    GRAF[Grafana\nDashboard]
+  end
+
+  PG -->|CDC| DBZ
+  DBZ -->|stream| RP
+  RP -->|consume| PY
+  PY -->|push metrics| PGW
+  PGW --> PROM
+  PROM -->|query| GRAF
+```
+
 ## Prerequisites
 
 - **Docker** or **OrbStack** up and running
