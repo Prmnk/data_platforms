@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+rule_files:
+  - "kafka-rules.yml"
+
+scrape_configs:
+  - job_name: 'kafka-broker-1'
+    static_configs:
+      - targets: ['kafka-1:9101']
+    relabel_configs:
+      - target_label: broker
+        replacement: 'broker-1'
+
+  - job_name: 'kafka-broker-2'
+    static_configs:
+      - targets: ['kafka-2:9102']
+    relabel_configs:
+      - target_label: broker
+        replacement: 'broker-2'
+
+  - job_name: 'kafka-broker-3'
+    static_configs:
+      - targets: ['kafka-3:9103']
+    relabel_configs:
+      - target_label: broker
+        replacement: 'broker-3'

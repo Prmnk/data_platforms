@@ -1,0 +1,157 @@
+groups:
+  - name: kafka_cluster
+    interval: 10s
+    rules:
+
+      # ─── CLUSTER HEALTH ───────────────────────────────────────────────────
+
+      # Total active controllers (must always be exactly 1)
+      - record: kafka:cluster:active_controllers
+        expr: sum(kafka_controller_activecontrollercount)
+
+      # Total offline partitions (must always be 0)
+      - record: kafka:cluster:offline_partitions
+        expr: sum(kafka_controller_offlinepartitionscount)
+
+      # Total under-replicated partitions (0 = healthy)
+      - record: kafka:cluster:under_replicated_partitions
+        expr: sum(kafka_server_replicamanager_underreplicatedpartitions)
+
+      # Number of brokers currently up
+      - record: kafka:cluster:brokers_online
+        expr: count(kafka_server_replicamanager_leadercount)
+
+      # ─── THROUGHPUT ───────────────────────────────────────────────────────
+
+      # Cluster-wide messages in per second
+      - record: kafka:cluster:messages_in_per_sec
+        expr: sum(rate(kafka_server_brokertopicmetrics_messagesin_total[1m]))
+
+      # Cluster-wide bytes in per second
+      - record: kafka:cluster:bytes_in_per_sec
+        expr: sum(rate(kafka_server_brokertopicmetrics_bytesin_total[1m]))
+
+      # Cluster-wide bytes out per second
+      - record: kafka:cluster:bytes_out_per_sec
+        expr: sum(rate(kafka_server_brokertopicmetrics_bytesout_total[1m]))
+
+      # Per-topic messages in per second
+      - record: kafka:topic:messages_in_per_sec
+        expr: sum by (topic) (rate(kafka_server_brokertopicmetrics_messagesin_total[1m]))
+
+      # Per-topic bytes in per second
+      - record: kafka:topic:bytes_in_per_sec
+        expr: sum by (topic) (rate(kafka_server_brokertopicmetrics_bytesin_total[1m]))
+
+      # ─── REPLICATION HEALTH ───────────────────────────────────────────────
+
+      # Total ISR shrinks across cluster (spikes = replication trouble)
+      - record: kafka:cluster:isr_shrinks_per_sec
+        expr: sum(kafka_server_replicamanager_isrshrinks_per_sec)
+
+      # Total ISR expands across cluster (spikes after broker rejoin)
+      - record: kafka:cluster:isr_expands_per_sec
+        expr: sum(kafka_server_replicamanager_isrexpands_per_sec)
+
+      # ─── PARTITION BALANCE ────────────────────────────────────────────────
+
+      # Leader imbalance ratio (0 = perfectly balanced)
+      - record: kafka:cluster:leader_imbalance_ratio
+        expr: >
+          (max(kafka_server_replicamanager_leadercount) - min(kafka_server_replicamanager_leadercount))
+          / sum(kafka_server_replicamanager_leadercount)
+
+      # Total partitions in cluster
+      - record: kafka:cluster:total_partitions
+        expr: sum(kafka_server_replicamanager_partitioncount)
+
+      # ─── LATENCY ──────────────────────────────────────────────────────────
+
+      # Average produce total latency across all brokers
+      - record: kafka:cluster:produce_latency_mean_ms
+        expr: avg({__name__=~"kafka_network_requestmetrics_totaltimems_mean.*", request="Produce"})
+
+      # Worst-case produce latency (max p99 across brokers)
+      - record: kafka:cluster:produce_latency_p99_ms
+        expr: max({__name__=~"kafka_network_requestmetrics_totaltimems_99thpercentile.*", request="Produce"})
+
+      # Average fetch latency across all brokers
+      - record: kafka:cluster:fetch_latency_mean_ms
+        expr: avg({__name__=~"kafka_network_requestmetrics_totaltimems_mean.*", request="FetchConsumer"})
+
+      # Remote time mean — pure cost of waiting for follower acks (acks=all overhead)
+      - record: kafka:cluster:produce_remote_time_mean_ms
+        expr: avg({__name__=~"kafka_network_requestmetrics_remotetimems_mean.*", request="Produce"})
+
+      # ─── BROKER HEALTH ────────────────────────────────────────────────────
+
+      # Minimum request handler idle % (weakest broker)
+      - record: kafka:cluster:min_request_handler_idle_pct
+        expr: min(kafka_server_request_handler_avg_idle_percent) * 100
+
+  # ─── ALERTS ─────────────────────────────────────────────────────────────────
+  - name: kafka_alerts
+    rules:
+
+      # Controller count != 1
+      - alert: KafkaNoActiveController
+        expr: kafka:cluster:active_controllers != 1
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Kafka has {{ $value }} active controllers (expected 1)"
+
+      # Any offline partitions
+      - alert: KafkaOfflinePartitions
+        expr: kafka:cluster:offline_partitions > 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $value }} offline partitions detected"
+
+      # Under-replicated partitions
+      - alert: KafkaUnderReplicatedPartitions
+        expr: kafka:cluster:under_replicated_partitions > 0
+        for: 60s
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $value }} under-replicated partitions"
+
+      # Broker went down
+      - alert: KafkaBrokerDown
+        expr: kafka:cluster:brokers_online < 3
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Only {{ $value }}/3 brokers online"
+
+      # Leader heavily imbalanced
+      - alert: KafkaLeaderImbalanced
+        expr: kafka:cluster:leader_imbalance_ratio > 0.2
+        for: 60s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Leader imbalance ratio is {{ $value }}"
+
+      # Request handler overloaded
+      - alert: KafkaBrokerOverloaded
+        expr: kafka:cluster:min_request_handler_idle_pct < 20
+        for: 60s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Broker request handler idle is only {{ $value }}%"
+
+      # Produce latency spike
+      - alert: KafkaHighProduceLatency
+        expr: kafka:cluster:produce_latency_p99_ms > 1000
+        for: 60s
+        labels:
+          severity: warning
+        annotations:
+          summary: "Produce p99 latency is {{ $value }}ms (threshold 1000ms)"
