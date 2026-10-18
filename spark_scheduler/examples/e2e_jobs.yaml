@@ -1,0 +1,31 @@
+# Jobs used by tests/e2e. Manual-trigger only, fast settings.
+jobs:
+  - name: e2e_ingest
+    app: /opt/sparksched/jobs/delta_ingest.py
+    args: ["--date", "{{ logical_date }}", "--path", "s3a://warehouse/e2e_orders", "--rows", "5000"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_flaky
+    app: /opt/sparksched/jobs/flaky_job.py
+    args: ["--attempt", "{{ attempt }}", "--succeed-on", "3"]
+    retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_slow
+    app: /opt/sparksched/jobs/slow_job.py
+    args: ["--seconds", "600"]
+    timeout_s: 45
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+
+  - name: e2e_verify
+    app: /opt/sparksched/jobs/verify_delta.py
+    args: ["--path", "s3a://warehouse/e2e_orders", "--min-rows", "5000"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_restart
+    app: /opt/sparksched/jobs/slow_job.py
+    args: ["--seconds", "40"]
+    timeout_s: 600
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}

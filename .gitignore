@@ -2,3 +2,10 @@
 node_modules/
 .env
 dist/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+spark_scheduler/logs/
+spark_scheduler/*.db

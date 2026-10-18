@@ -1,0 +1,120 @@
+name: spark-scheduler
+
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  AWS_REGION: us-east-1
+
+x-sched-env: &sched-env
+  <<: *s3-env
+  DATABASE_URL: postgresql+psycopg2://sched:sched@postgres:5432/sparksched
+  SPARK_MASTER_URL: spark://spark-master:7077
+  SPARK_MASTER_UI: http://spark-master:8080
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+volumes:
+  pg-data: null
+  minio-data: null
+  sched-logs: null
+  grafana-data: null
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sched
+      POSTGRES_PASSWORD: sched
+      POSTGRES_DB: sparksched
+    ports: ["5433:5432"]
+    volumes: [pg-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sched -d sparksched"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    # The official minio/minio image is no longer published on Docker Hub; this is the
+    # last Bitnami build. Override with MINIO_IMAGE if you build/host your own.
+    image: ${MINIO_IMAGE:-bitnamilegacy/minio:2025.4.22}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_DEFAULT_BUCKETS: warehouse,artifacts
+    ports: ["9000:9000", "9001:9001"]
+    volumes: [minio-data:/bitnami/minio/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  spark-master:
+    build: {context: ., dockerfile: docker/Dockerfile, target: spark}
+    image: sparksched-spark:3.5.8
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master",
+              "--host", "spark-master", "--port", "7077", "--webui-port", "8080"]
+    ports: ["8088:8080"]
+
+  spark-worker-1: &worker
+    build: {context: ., dockerfile: docker/Dockerfile, target: spark}
+    image: sparksched-spark:3.5.8
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker",
+              "--cores", "2", "--memory", "1536m", "spark://spark-master:7077"]
+    environment: *s3-env
+    depends_on: [spark-master]
+
+  spark-worker-2: *worker
+
+  scheduler:
+    build: {context: ., dockerfile: docker/Dockerfile, target: scheduler}
+    image: sparksched:dev
+    command: ["python3", "-m", "scheduler", "loop"]
+    hostname: scheduler        # executors connect back to drivers on this host
+    restart: unless-stopped
+    user: root
+    init: true                 # reap adopted driver processes after a scheduler restart
+    environment:
+      <<: *sched-env
+      DRIVER_HOST: scheduler
+      MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-3}
+      TICK_SECONDS: "3"
+    volumes:
+      - sched-logs:/var/log/sparksched
+      - ./jobs:/opt/sparksched/jobs:ro
+    ports: ["4040-4049:4040-4049"]   # driver UIs (one port per running attempt)
+    depends_on:
+      postgres: {condition: service_healthy}
+      minio: {condition: service_healthy}
+      spark-master: {condition: service_started}
+
+  api:
+    build: {context: ., dockerfile: docker/Dockerfile, target: scheduler}
+    image: sparksched:dev
+    command: ["python3", "-m", "scheduler", "api"]
+    restart: unless-stopped
+    user: root
+    environment: *sched-env
+    volumes: [sched-logs:/var/log/sparksched:ro]
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: [./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: ["9095:9090"]
+    depends_on: [api]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3001:3000"]
+    depends_on: [prometheus, api]

@@ -1,0 +1,33 @@
+# Apply with:  sched apply -f examples/jobs.yaml
+# Cron schedules are UTC. Paths are inside the scheduler container.
+# Arg placeholders: {{ logical_date }}, {{ run_id }}, {{ attempt }}, {{ job }}
+jobs:
+  - name: orders_ingest
+    description: Synthetic orders -> s3a://warehouse/orders (Delta, replaceWhere per day)
+    schedule: "*/5 * * * *"
+    app: /opt/sparksched/jobs/delta_ingest.py
+    args: ["--date", "{{ logical_date }}", "--rows", "20000"]
+    spark_conf:
+      spark.cores.max: "2"
+    retry: {max_attempts: 3, backoff: exponential, initial_delay_s: 20, max_delay_s: 300}
+    timeout_s: 900
+
+  - name: customers_merge
+    description: MERGE customer aggregates into s3a://warehouse/customers
+    schedule: "*/10 * * * *"
+    app: /opt/sparksched/jobs/delta_merge.py
+    retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 30}
+    timeout_s: 900
+
+  - name: flaky_demo
+    description: Fails twice, then succeeds (manual trigger only)
+    app: /opt/sparksched/jobs/flaky_job.py
+    args: ["--attempt", "{{ attempt }}", "--succeed-on", "3"]
+    retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 10, jitter: 0}
+
+  - name: slow_demo
+    description: Exceeds its timeout every time and ends DEAD (manual trigger only)
+    app: /opt/sparksched/jobs/slow_job.py
+    args: ["--seconds", "300"]
+    timeout_s: 60
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 10, retry_on_timeout: true}

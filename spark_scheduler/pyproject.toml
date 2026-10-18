@@ -1,0 +1,26 @@
+[project]
+name = "sparksched"
+version = "0.1.0"
+description = "A small scheduler for Apache Spark + Delta jobs"
+requires-python = ">=3.9"
+dynamic = ["dependencies"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+include = ["scheduler*"]
+
+[project.scripts]
+sched = "scheduler.cli:app"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "e2e: needs the docker compose stack running (make up)",
+]
+addopts = "-m 'not e2e'"

@@ -1,0 +1,41 @@
+name: spark-scheduler
+
+on:
+  push:
+    paths: ["spark_scheduler/**", ".github/workflows/spark-scheduler.yml"]
+  pull_request:
+    paths: ["spark_scheduler/**"]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"   # nightly e2e
+
+defaults:
+  run:
+    working-directory: spark_scheduler
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  e2e:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install -r requirements-dev.txt
+      - run: docker compose up -d --build
+      - run: python -m pytest -q -m e2e tests/e2e
+      - if: failure()
+        run: docker compose logs --no-color scheduler api spark-master > compose.log; tail -300 compose.log
+      - if: always()
+        run: docker compose down -v

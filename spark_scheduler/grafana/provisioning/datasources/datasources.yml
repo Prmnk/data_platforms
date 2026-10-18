@@ -1,0 +1,15 @@
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+
+  # Reads the scheduler REST API directly (e.g. /status/jobs) for live tables.
+  - name: sparksched-api
+    uid: sparksched-api
+    type: yesoreyeram-infinity-datasource
+    jsonData:
+      allowedHosts: ["http://api:8000"]
