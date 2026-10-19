@@ -106,7 +106,11 @@ bucket older than 7 days), only the still-live grains (month, year) are adjusted
 ### Monitoring
 
 Prometheus scrapes Flink (`:9249`), the API (`/metrics`), Scylla (`:9180`) and Redpanda
-(`/public_metrics`) every 5 s. The dashboard rows:
+(`/public_metrics`) every 5 s.
+
+![Grafana "Feature store" dashboard](docs/images/grafana-dashboard.png)
+
+The dashboard rows:
 
 - **Overview:** feature freshness p95, source backlog, events/s, API p99, degraded-response share, job restarts, failed checkpoints.
 - **Pipeline:**
