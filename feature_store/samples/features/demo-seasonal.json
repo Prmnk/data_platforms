@@ -1,0 +1,161 @@
+{
+  "case": "Festive shopper: 4 purchases a month, but 25 bigger ones a month in Oct-Dec last year.",
+  "request": "/v1/users/demo-seasonal/features",
+  "response": {
+    "user_id": "demo-seasonal",
+    "as_of": "2026-10-19T09:14:03.602147+05:30",
+    "features_status": "ok",
+    "has_history": true,
+    "freshness_sec": 0.765,
+    "profile": {
+      "segment": "gold",
+      "kyc_level": "full",
+      "signup_date": "2022-01-15",
+      "account_age_days": 1738
+    },
+    "today": {
+      "transactions": {
+        "count": 1,
+        "amount": 259069
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "mtd": {
+      "transactions": {
+        "count": 10,
+        "amount": 2247773
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "ytd": {
+      "transactions": {
+        "count": 46,
+        "amount": 10024961
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "velocity": {
+      "this_hour": {
+        "transactions": {
+          "count": 0,
+          "amount": 0
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      },
+      "last_24h": {
+        "transactions": {
+          "count": 2,
+          "amount": 511428
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      }
+    },
+    "monthly_12m": [
+      {
+        "month": "2025-10",
+        "txn_cnt": 25,
+        "txn_amt": 14666180,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-11",
+        "txn_cnt": 25,
+        "txn_amt": 13438201,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-12",
+        "txn_cnt": 25,
+        "txn_amt": 13690408,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-01",
+        "txn_cnt": 4,
+        "txn_amt": 958827,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-02",
+        "txn_cnt": 4,
+        "txn_amt": 894211,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-03",
+        "txn_cnt": 4,
+        "txn_amt": 933153,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-04",
+        "txn_cnt": 4,
+        "txn_amt": 1022938,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-05",
+        "txn_cnt": 4,
+        "txn_amt": 883652,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-06",
+        "txn_cnt": 4,
+        "txn_amt": 906968,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-07",
+        "txn_cnt": 4,
+        "txn_amt": 661074,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-08",
+        "txn_cnt": 4,
+        "txn_amt": 846272,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-09",
+        "txn_cnt": 4,
+        "txn_amt": 670093,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      }
+    ],
+    "derived": {
+      "avg_monthly_txn_amt_12m": 4130998.08,
+      "avg_txn_amt_12m": 446594.3874,
+      "txn_amt_mtd_vs_same_month_last_year": 0.1533,
+      "ord_amt_mtd_vs_same_month_last_year": null
+    }
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "case": "Fraud-like: small weekly spend for 10 months, then 12 large card transactions in the last 20 minutes.",
+  "request": "/v1/users/demo-burst/features?current_txn_amt=2500000",
+  "response": {
+    "user_id": "demo-burst",
+    "as_of": "2026-10-19T09:14:03.644052+05:30",
+    "features_status": "ok",
+    "has_history": true,
+    "freshness_sec": 0.766,
+    "profile": {
+      "segment": "standard",
+      "kyc_level": "min",
+      "signup_date": "2025-12-01",
+      "account_age_days": 322
+    },
+    "today": {
+      "transactions": {
+        "count": 12,
+        "amount": 13898537
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "mtd": {
+      "transactions": {
+        "count": 17,
+        "amount": 14271429
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "ytd": {
+      "transactions": {
+        "count": 85,
+        "amount": 19249078
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "velocity": {
+      "this_hour": {
+        "transactions": {
+          "count": 8,
+          "amount": 9089105
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      },
+      "last_24h": {
+        "transactions": {
+          "count": 12,
+          "amount": 13898537
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      }
+    },
+    "monthly_12m": [
+      {
+        "month": "2025-10",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-11",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-12",
+        "txn_cnt": 2,
+        "txn_amt": 136177,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-01",
+        "txn_cnt": 8,
+        "txn_amt": 600606,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-02",
+        "txn_cnt": 7,
+        "txn_amt": 512207,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-03",
+        "txn_cnt": 7,
+        "txn_amt": 570091,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-04",
+        "txn_cnt": 8,
+        "txn_amt": 529518,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-05",
+        "txn_cnt": 8,
+        "txn_amt": 617933,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-06",
+        "txn_cnt": 7,
+        "txn_amt": 472402,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-07",
+        "txn_cnt": 8,
+        "txn_amt": 526060,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-08",
+        "txn_cnt": 8,
+        "txn_amt": 614526,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-09",
+        "txn_cnt": 7,
+        "txn_amt": 534306,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      }
+    ],
+    "derived": {
+      "avg_monthly_txn_amt_12m": 426152.17,
+      "avg_txn_amt_12m": 73054.6571,
+      "txn_amt_mtd_vs_same_month_last_year": null,
+      "ord_amt_mtd_vs_same_month_last_year": null,
+      "current_txn_amt_vs_avg_txn_12m": 34.221,
+      "txn_amt_today_incl_current": 16398537,
+      "txn_cnt_today_incl_current": 13
+    }
+  }
+}
