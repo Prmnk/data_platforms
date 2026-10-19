@@ -1,0 +1,156 @@
+{
+  "case": "Never seen: no events at all (API returns zeros, has_history=false).",
+  "request": "/v1/users/demo-unknown/features",
+  "response": {
+    "user_id": "demo-unknown",
+    "as_of": "2026-10-19T09:14:03.782640+05:30",
+    "features_status": "ok",
+    "has_history": false,
+    "freshness_sec": null,
+    "profile": null,
+    "today": {
+      "transactions": {
+        "count": 0,
+        "amount": 0
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "mtd": {
+      "transactions": {
+        "count": 0,
+        "amount": 0
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "ytd": {
+      "transactions": {
+        "count": 0,
+        "amount": 0
+      },
+      "orders": {
+        "count": 0,
+        "amount": 0
+      }
+    },
+    "velocity": {
+      "this_hour": {
+        "transactions": {
+          "count": 0,
+          "amount": 0
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      },
+      "last_24h": {
+        "transactions": {
+          "count": 0,
+          "amount": 0
+        },
+        "orders": {
+          "count": 0,
+          "amount": 0
+        }
+      }
+    },
+    "monthly_12m": [
+      {
+        "month": "2025-10",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-11",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2025-12",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-01",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-02",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-03",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-04",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-05",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-06",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-07",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-08",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      },
+      {
+        "month": "2026-09",
+        "txn_cnt": 0,
+        "txn_amt": 0,
+        "ord_cnt": 0,
+        "ord_amt": 0
+      }
+    ],
+    "derived": {
+      "avg_monthly_txn_amt_12m": 0.0,
+      "avg_txn_amt_12m": null,
+      "txn_amt_mtd_vs_same_month_last_year": null,
+      "ord_amt_mtd_vs_same_month_last_year": null
+    }
+  }
+}

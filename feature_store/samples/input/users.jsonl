@@ -1,0 +1,6 @@
+{"user_id": "demo-steady", "segment": "standard", "kyc_level": "full", "signup_date": "2023-05-10", "updated_at": 1792381441000}
+{"user_id": "demo-seasonal", "segment": "gold", "kyc_level": "full", "signup_date": "2022-01-15", "updated_at": 1792381441000}
+{"user_id": "demo-burst", "segment": "standard", "kyc_level": "min", "signup_date": "2025-12-01", "updated_at": 1792381441000}
+{"user_id": "demo-refunds", "segment": "gold", "kyc_level": "full", "signup_date": "2024-02-20", "updated_at": 1792381441000}
+{"user_id": "demo-new", "segment": "standard", "kyc_level": "min", "signup_date": "2026-10-17", "updated_at": 1792381441000}
+{"user_id": "demo-dupes", "segment": "platinum", "kyc_level": "full", "signup_date": "2020-08-01", "updated_at": 1792381441000}

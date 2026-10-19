@@ -1,0 +1,213 @@
+name: feature-store
+
+x-flink-image: &flink-image
+  image: feature-store/flink-job:local
+
+x-job-env: &job-env
+  FS_BROKERS: redpanda:9092
+  FS_TXN_TOPIC: transactions
+  FS_ORDERS_TOPIC: orders
+  FS_USERS_TOPIC: users
+  FS_CHANGELOG_TOPIC: features.changelog
+  FS_TZ: Asia/Kolkata
+  FS_FLUSH_MS: "100"
+  FS_SCYLLA_CONTACT_POINTS: scylla:9042
+  FS_SCYLLA_DC: datacenter1
+  FS_KEYSPACES: fs
+
+services:
+  # ---------------------------------------------------------------- Redpanda
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --mode=dev-container
+      - --smp=1
+      - --memory=512M
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.7
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        B="-X brokers=redpanda:9092"
+        rpk topic create transactions orders -p 6 -r 1 $$B || true
+        # compacted: latest value per key == a full copy of the online store
+        rpk topic create users features.changelog -p 6 -r 1 -c cleanup.policy=compact $$B || true
+        rpk topic create features.served -p 3 -r 1 $$B || true
+        rpk topic list $$B
+
+  console:
+    image: docker.redpanda.com/redpandadata/console:v2.7.2
+    profiles: ["ui"]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # ---------------------------------------------------------------- Scylla
+  scylla:
+    image: scylladb/scylla:6.2.0
+    command: --smp 1 --memory 750M --overprovisioned 1 --developer-mode 1
+    ports:
+      - "9042:9042"
+    volumes:
+      - scylla-data:/var/lib/scylla
+      - ./scylla:/schema:ro
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'SELECT release_version FROM system.local' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  scylla-init:
+    image: scylladb/scylla:6.2.0
+    depends_on:
+      scylla:
+        condition: service_healthy
+    entrypoint: ["cqlsh", "scylla", "-f", "/schema/schema.cql"]
+    volumes:
+      - ./scylla:/schema:ro
+
+  # ---------------------------------------------------------------- Flink
+  jobmanager:
+    <<: *flink-image
+    build: ./flink-job
+    entrypoint: ["/opt/flink/bin/start-job.sh"]
+    depends_on:
+      redpanda-init:
+        condition: service_completed_successfully
+      scylla-init:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *job-env
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        jobmanager.memory.process.size: 768m
+        parallelism.default: 2
+        state.backend.type: hashmap
+        state.checkpoints.dir: file:///flink-data/checkpoints
+        state.savepoints.dir: file:///flink-data/savepoints
+        execution.checkpointing.interval: 30s
+        execution.checkpointing.mode: AT_LEAST_ONCE
+        execution.checkpointing.externalized-checkpoint-retention: RETAIN_ON_CANCELLATION
+        restart-strategy.type: exponential-delay
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+        metrics.latency.interval: 0
+    volumes:
+      - flink-data:/flink-data
+
+  taskmanager:
+    <<: *flink-image
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        taskmanager.memory.process.size: 1024m
+        metrics.reporter.prom.factory.class: org.apache.flink.metrics.prometheus.PrometheusReporterFactory
+        metrics.reporter.prom.port: 9249
+    volumes:
+      - flink-data:/flink-data
+
+  # ---------------------------------------------------------------- Feature API
+  api:
+    build: ./api
+    depends_on:
+      scylla-init:
+        condition: service_completed_successfully
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      FS_SCYLLA_HOSTS: scylla
+      FS_SCYLLA_DC: datacenter1
+      FS_KEYSPACE: fs
+      FS_TZ: Asia/Kolkata
+      FS_REQUEST_TIMEOUT_S: "0.2"
+      FS_BROKERS: redpanda:9092
+      FS_SERVED_TOPIC: features.served
+    ports:
+      - "8000:8000"
+
+  # ---------------------------------------------------------------- tools (generator, verify, reload)
+  tools:
+    build: ./tools
+    profiles: ["tools"]
+    environment:
+      FS_BROKERS: redpanda:9092
+      FS_SCYLLA_HOSTS: scylla
+      FS_SCYLLA_DC: datacenter1
+      FS_TZ: Asia/Kolkata
+      FS_API: http://api:8000
+    volumes:
+      - ./tools:/app
+      - ./scylla:/schema:ro
+      - ./samples:/samples
+
+  # continuous live traffic for dashboards: make load / make load-stop
+  loadgen:
+    build: ./tools
+    profiles: ["load"]
+    command: python generate.py --users 500 --history-days 0 --live-seconds 86400 --rate 25 --seed 11
+    environment:
+      FS_BROKERS: redpanda:9092
+    volumes:
+      - ./tools:/app
+
+  # ---------------------------------------------------------------- monitoring
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/feature-store.json
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  redpanda-data:
+  scylla-data:
+  flink-data:
