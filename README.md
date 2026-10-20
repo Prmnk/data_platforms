@@ -1,7 +1,7 @@
 # data_platforms
 
-Hands-on, local data-platform projects: streaming, CDC, batch orchestration and real-time
-feature serving. Each project is self-contained (its own `docker-compose.yml`, README and
+Hands-on, local data-platform projects: streaming, CDC, batch orchestration on Spark or
+[Sail](https://github.com/lakehq/sail), and real-time feature serving. Each project is self-contained (its own `docker-compose.yml`, README and
 monitoring) and runs on a laptop with Docker.
 
 ## Projects
@@ -27,7 +27,58 @@ monitoring) and runs on a laptop with Docker.
 - **cdc_monitoring** is how operational tables get onto the event bus.
 - **kafka-local** looks at the bus itself: durability settings and their latency cost.
 - **feature_store** turns events into low-latency features for online decisions.
-- **spark_scheduler** runs the batch side: scheduled Spark/Delta jobs on object storage. The feature store's backfill design (see its README) is where the two meet.
+- **spark_scheduler** runs the batch side: scheduled Spark/Delta jobs on object storage, each on Spark or on Sail. The feature store's backfill design (see its README) is where the two meet.
+
+## Batch jobs on Spark or Sail
+
+[Sail](https://github.com/lakehq/sail) is an open-source Rust engine that speaks the Spark Connect
+protocol, so PySpark DataFrame and SQL code runs on it without a JVM. In **spark_scheduler** every
+job picks its engine with one line, and the same script runs on either:
+
+```yaml
+jobs:
+  - name: orders_pipeline_spark
+    app: /opt/sparksched/jobs/ingest_pipeline.py      # engine: spark is the default
+  - name: orders_pipeline_sail
+    engine: sail                                      # same script, run on the Sail server
+    app: /opt/sparksched/jobs/ingest_pipeline.py
+```
+
+- **Spark** jobs go through `spark-submit` to the standalone cluster.
+- **Sail** jobs run as plain Python over Spark Connect to the `sail` service.
+- **Shared by both:** retries, timeouts, cancel, concurrency limits, status, metrics and the
+  Grafana table. On cancel or timeout the Sail runner also interrupts the job's Spark Connect
+  session, because Sail keeps running a query after its client dies.
+- **Delta tables are interchangeable:** a test reads, with Spark, a table that Sail wrote.
+- **What Sail doesn't support:** RDDs, delta-spark's `DeltaTable` Python API, and some Delta write
+  options. Details are in the
+  [spark_scheduler README](spark_scheduler/README.md#running-jobs-on-sail).
+
+### Spark vs Sail on an ingestion pipeline
+
+[The benchmark](spark_scheduler/bench/README.md) runs one pipeline on both engines, each in a
+resource-capped container: schema checks, a quarantine table, dedup, and a Delta `MERGE`. The input
+is two batches of about 4.1M raw events, merged into a 2.08M-row silver table. Both engines produced
+identical tables.
+
+| Run | Time | CPU-seconds | Result |
+|---|---|---|---|
+| Spark, 4 CPU / 3 GB (baseline) | 349–363 s | ~1,100 | ok |
+| **Sail, 0.8 CPU / 3 GB (⅕ of the CPU)** | **381 s** | **298** | ok |
+| Sail, 0.8 CPU / 614 MB (⅕ of CPU and memory) | – | – | MERGE runs out of memory |
+| Sail, 4 CPU / 3 GB (same as Spark) | 249 s | 855 | ok, 1.4× faster |
+| Spark, 0.8 CPU / 3 GB (same as Sail) | 726 s | 578 | ok, Sail is 1.9× faster |
+| Smallest passing config at 0.8 CPU | Spark: 1.25 GB, 715 s · Sail: 1.75 GB, 409 s | | |
+
+- **CPU:** Sail matched Spark's 4-CPU time on a fifth of the CPU, with about 3.7× fewer
+  CPU-seconds. The gain is mostly in reading, validating and deduplicating JSON, which is about 4×
+  faster. The Delta MERGE is only about 1.3× faster.
+- **Memory:** Sail can't run this workload in a fifth of the memory. Its MERGE needs about 1.75 GB,
+  more than Spark's 1.25–1.5 GB. It also needs a bounded memory pool: with the default unbounded
+  pool it grows until the container is OOM-killed.
+- **Hardware:** a 2-core MacBook Air, so "4 CPUs" is 2 cores with hyper-threading. Most
+  configurations ran once. Method and caveats are in the
+  [benchmark README](spark_scheduler/bench/README.md).
 
 ## Running a project
 
@@ -53,7 +104,7 @@ before starting the next (`make down`, or `docker compose down`).
 ```
 data_platforms/
 ├── feature_store/      # Redpanda → Flink → Scylla → Feature API
-├── spark_scheduler/    # cron + retries for Spark/Delta jobs
+├── spark_scheduler/    # cron + retries for Spark/Delta jobs, on Spark or Sail (+ bench/)
 ├── cdc_monitoring/     # Postgres → Debezium → Redpanda → metrics
 ├── kafka-local/        # 3-broker Kafka + JMX metrics experiments
 └── .github/workflows/  # CI (spark_scheduler: unit tests on push/PR, nightly end-to-end)
