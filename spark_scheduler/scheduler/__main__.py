@@ -26,6 +26,8 @@ def _setup_logging() -> None:
 
 def run_loop() -> None:
     from .engine import Scheduler
+    from .runners.router import EngineRouter
+    from .runners.sail import SailRunner
     from .runners.standalone import SparkSubmitRunner
 
     settings = get_settings()
@@ -39,9 +41,10 @@ def run_loop() -> None:
         lock = try_acquire_leader(engine)
     log.info("acquired leader lock")
 
-    sched = Scheduler(make_session_factory(engine), SparkSubmitRunner(settings), settings,
+    runner = EngineRouter({"spark": SparkSubmitRunner(settings), "sail": SailRunner(settings)})
+    sched = Scheduler(make_session_factory(engine), runner, settings,
                       leader_check=lambda: lock_alive(lock))
-    # Leave running Spark drivers alone on shutdown; the next scheduler adopts them.
+    # Leave running drivers alone on shutdown; the next scheduler adopts them.
     signal.signal(signal.SIGTERM, lambda *_: sched.stop())
     signal.signal(signal.SIGINT, lambda *_: sched.stop())
     sched.run_forever()

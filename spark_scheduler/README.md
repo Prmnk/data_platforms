@@ -5,6 +5,12 @@ without Airflow. It schedules jobs on cron, submits them to a Spark standalone c
 until they finish, retries them according to each job's own policy, and exposes everything through
 a REST API, Prometheus metrics, and a ready-made Grafana dashboard.
 
+Each job picks an engine: **Spark** (the default) or **[Sail](https://github.com/lakehq/sail) 0.7.2**,
+a Rust engine that speaks the Spark Connect protocol. The same PySpark scripts run on both; see
+[Running jobs on Sail](#running-jobs-on-sail). [bench/](bench/README.md) compares the two on an
+ingestion pipeline (schema checks, dedup, Delta MERGE): on a fifth of Spark's CPU, Sail matched
+Spark's time with ~3.7× fewer CPU-seconds, but its MERGE needed more memory than Spark.
+
 ```
  jobs.yaml ─▶ sched CLI ─▶ REST API (:8000) ─▶ Postgres ◀─ Scheduler loop (single leader)
                               │  /status, /metrics            │  cron → launch → poll → retry
@@ -31,6 +37,7 @@ make status        # latest state of every job
 | Driver UIs | http://localhost:4040 … 4049 (one per running attempt) |
 | MinIO console | http://localhost:9001 (minioadmin / minioadmin) |
 | Grafana | http://localhost:3001 (admin / admin) → *Spark Scheduler* dashboard |
+| Sail (Spark Connect) | `sc://localhost:50051`, e.g. `SPARK_REMOTE=sc://localhost:50051 pyspark` |
 | Prometheus | http://localhost:9095 |
 
 Docker needs about 6 GB of RAM for comfortable concurrency. On smaller machines run
@@ -44,6 +51,7 @@ jobs:
     schedule: "*/5 * * * *"          # cron, UTC; omit for manual-only jobs
     app: /opt/sparksched/jobs/delta_ingest.py
     args: ["--date", "{{ logical_date }}"]   # also {{ run_id }}, {{ attempt }}, {{ job }}
+    engine: spark                    # or sail (default: spark)
     spark_conf: {spark.cores.max: "2", spark.executor.memory: 1g}
     retry:
       max_attempts: 3                # total tries, including the first
@@ -110,6 +118,46 @@ where a Kubernetes runner would plug in later.
 **Retry-safe writes:** for retries to be safe, the jobs must be idempotent. `delta_ingest.py` uses
 `replaceWhere` on the logical date, and `delta_merge.py` uses `MERGE`.
 
+## Running jobs on Sail
+
+Set `engine: sail` on a job. `make demo-sail` runs the Sail versions of ingest + merge.
+
+**How it runs.** `SailRunner` (`scheduler/runners/sail.py`) starts the script with plain `python3`
+(no `spark-submit`, no JVM) through `scheduler/runners/sail_bootstrap.py`, which opens a Spark
+Connect session to the `sail` service with the job's `spark_conf` and then runs the script; the
+script's own `getOrCreate()` gets that session. Process handling (exit file, adoption after a
+restart, process-group kill) is shared with the Spark runner, and `EngineRouter` sends each
+attempt to the right runner.
+
+**Cancel and timeout.** Sail keeps executing a query after its client process dies. Each attempt
+therefore gets its own session id (saved as `<log>.sail`), and on cancel, timeout or a lost driver
+the runner first calls `interruptAll()` on that session from a new client, then kills the process.
+The attempt log ends with `[sparksched] interrupted N operation(s)`.
+
+**Writing scripts that run on both engines** (the scripts in `jobs/` do):
+
+| Avoid | Use instead | Why |
+|---|---|---|
+| `delta.tables.DeltaTable` (`isDeltaTable`, `forPath(...).merge`, `history`) | `MERGE INTO delta.\`path\``, `jobs/delta_util.py: delta_table_exists` | delta-spark 3.x's Python API calls the JVM, which Spark Connect clients don't have |
+| `replaceWhere` on a table that does not exist yet | plain write (append) the first time | Sail: `No commit files found in _delta_log` |
+| RDDs, `sparkContext` | DataFrame API, UDFs | not in the Spark Connect protocol |
+| `partitionOverwriteMode=dynamic` | `replaceWhere` | **Sail 0.7.2 ignores it and replaces the whole table, without an error** |
+| `DESCRIBE HISTORY` | (skip) | not supported by Sail yet |
+
+Other things found while building this (Sail 0.7.2, PySpark 3.5.8 client):
+
+- **Python UDFs run inside the Sail server**, so the server needs the client's Python minor version
+  (3.10 here) and PySpark installed (`docker/Dockerfile`, `sail` stage).
+- `SAIL_MODE=local-cluster` fails to *create* a Delta table from a plan with scalar functions
+  (`ExtendedScalarUdf: no UDF found for round`). The compose service uses `SAIL_MODE=local`
+  (one process using all cores), which is the normal choice on a single host anyway.
+- Two jobs committing to the same Delta table at the same time: one fails with
+  `Failed to commit transaction` (Delta optimistic concurrency); give such jobs a retry policy.
+- Spark-side settings (`spark.cores.max`, `spark.executor.memory`, `spark.hadoop.fs.s3a.*`) are
+  accepted but have no effect. S3 access comes from `AWS_*` env vars on the `sail` service, and
+  `s3a://` paths work unchanged.
+- No Spark UI and no application list: Sail attempts have no `app_id` or `ui_port`.
+
 ## Monitoring API (for Grafana and anything else)
 
 | Endpoint | Use |
@@ -145,7 +193,8 @@ Alerts worth adding:
 |---|---|---|
 | Unit | `make test` | Spec validation, cron and catchup, retry/backoff math, the engine state machine with a scripted fake runner (retry, DEAD, timeout, cancel, global and per-job concurrency, recovery/LOST, launch failure), API and metrics |
 | Integration | `make test` | Real process handling with a fake `spark-submit`: exit codes, exit files, adopting after restart, killing the process group |
-| End-to-end | `make up && make test-e2e` | Real Spark + Delta + MinIO: a batch of ingest + flaky + slow jobs (retries to success, timeouts to DEAD, concurrency cap), Delta table verified by a Spark job, cancel, the status/metrics endpoints, scheduler restart mid-run |
+| Integration | `make test` | `SailRunner`/`EngineRouter` with a fake Python: command line, one session per attempt, interrupt on kill and on a lost driver, adoption by engine |
+| End-to-end | `make up && make test-e2e` | Real Spark + Delta + MinIO: a batch of ingest + flaky + slow jobs (retries to success, timeouts to DEAD, concurrency cap), Delta table verified by a Spark job, cancel, the status/metrics endpoints, scheduler restart mid-run. On Sail: the same batch, timeout and cancel interrupting the Sail session, ingest + MERGE, and Spark reading the table Sail wrote |
 
 CI is in `.github/workflows/spark-scheduler.yml`. Unit tests run on every push. The e2e suite runs nightly and on manual dispatch.
 
@@ -160,6 +209,8 @@ CI is in `.github/workflows/spark-scheduler.yml`. Unit tests run on every push. 
 | `TICK_SECONDS` | 5 (compose: 3) | Loop interval |
 | `LOG_DIR` | `./logs` | Driver logs, `<job>/<run_id>/attempt-N.log` |
 | `KILL_GRACE_SECONDS` | 10 | SIGTERM → SIGKILL grace |
+| `SAIL_REMOTE` | `sc://sail:50051` | Spark Connect address of the Sail server |
+| `SAIL_PYTHON` | `python3` | Python that runs `engine: sail` scripts |
 | `MINIO_IMAGE` | `bitnamilegacy/minio:2025.4.22` | The official `minio/minio` image is no longer on Docker Hub |
 
 ## Next steps (not built yet)

@@ -1,9 +1,12 @@
-"""Upsert per-customer aggregates from the orders table into a customers Delta table (MERGE)."""
+"""Upsert per-customer aggregates from the orders table into a customers Delta table (MERGE).
+
+Uses SQL MERGE INTO rather than delta-spark's DeltaTable API, so it also runs on Sail."""
 import argparse
 
-from delta.tables import DeltaTable
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+
+from delta_util import delta_table_exists
 
 p = argparse.ArgumentParser()
 p.add_argument("--orders", default="s3a://warehouse/orders")
@@ -19,12 +22,14 @@ updates = (
     .withColumn("updated_at", F.current_timestamp())
 )
 
-if DeltaTable.isDeltaTable(spark, a.path):
-    (DeltaTable.forPath(spark, a.path).alias("t")
-        .merge(updates.alias("u"), "t.customer_id = u.customer_id")
-        .whenMatchedUpdateAll()
-        .whenNotMatchedInsertAll()
-        .execute())
+if delta_table_exists(spark, a.path):
+    updates.createOrReplaceTempView("customer_updates")
+    spark.sql(f"""
+        MERGE INTO delta.`{a.path}` t
+        USING customer_updates u ON t.customer_id = u.customer_id
+        WHEN MATCHED THEN UPDATE SET *
+        WHEN NOT MATCHED THEN INSERT *
+    """).collect()
 else:
     updates.write.format("delta").save(a.path)
 

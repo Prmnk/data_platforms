@@ -29,3 +29,45 @@ jobs:
     args: ["--seconds", "40"]
     timeout_s: 600
     retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+
+  # ---- engine: sail (same scripts, run over Spark Connect on the sail service)
+  - name: e2e_sail_ingest
+    engine: sail
+    app: /opt/sparksched/jobs/delta_ingest.py
+    args: ["--date", "{{ logical_date }}", "--path", "s3a://warehouse/e2e_sail_orders", "--rows", "5000"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_sail_merge
+    engine: sail
+    app: /opt/sparksched/jobs/delta_merge.py
+    args: ["--orders", "s3a://warehouse/e2e_sail_orders", "--path", "s3a://warehouse/e2e_sail_customers"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_sail_flaky
+    engine: sail
+    app: /opt/sparksched/jobs/flaky_job.py
+    args: ["--attempt", "{{ attempt }}", "--succeed-on", "3"]
+    retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_sail_slow
+    engine: sail
+    app: /opt/sparksched/jobs/slow_job.py
+    args: ["--seconds", "600"]
+    timeout_s: 30
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+
+  - name: e2e_sail_verify
+    engine: sail
+    app: /opt/sparksched/jobs/verify_delta.py
+    args: ["--path", "s3a://warehouse/e2e_sail_customers", "--min-rows", "500"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600
+
+  - name: e2e_spark_reads_sail_table   # cross-engine: Spark reads the Delta table Sail wrote
+    app: /opt/sparksched/jobs/verify_delta.py
+    args: ["--path", "s3a://warehouse/e2e_sail_orders", "--min-rows", "5000"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 5, jitter: 0}
+    timeout_s: 600

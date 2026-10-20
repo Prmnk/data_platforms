@@ -27,6 +27,11 @@ class Settings:
     driver_host: str = field(
         default_factory=lambda: os.environ.get("DRIVER_HOST", socket.gethostname())
     )
+    # Sail (engine: sail): Spark Connect endpoint and the Python that runs the job scripts.
+    sail_remote: str = field(
+        default_factory=lambda: os.environ.get("SAIL_REMOTE", "sc://sail:50051")
+    )
+    sail_python: str = field(default_factory=lambda: os.environ.get("SAIL_PYTHON", "python3"))
     log_dir: str = field(default_factory=lambda: os.environ.get("LOG_DIR", "./logs"))
     tick_seconds: float = field(default_factory=lambda: float(os.environ.get("TICK_SECONDS", 5)))
     max_concurrent_runs: int = field(default_factory=lambda: _env_int("MAX_CONCURRENT_RUNS", 4))

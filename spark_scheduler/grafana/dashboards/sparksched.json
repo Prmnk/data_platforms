@@ -263,6 +263,11 @@
               "type": "boolean"
             },
             {
+              "selector": "engine",
+              "text": "Engine",
+              "type": "string"
+            },
+            {
               "selector": "schedule",
               "text": "Schedule",
               "type": "string"

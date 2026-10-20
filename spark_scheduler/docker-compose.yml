@@ -66,6 +66,29 @@ services:
 
   spark-worker-2: *worker
 
+  # Sail: Spark Connect server for jobs with `engine: sail`. Local mode: one process using all
+  # cores. (Sail 0.7.2's local-cluster mode fails to create a new Delta table when the plan
+  # has scalar functions such as round(): "ExtendedScalarUdf: no UDF found for round".)
+  sail:
+    build: {context: ., dockerfile: docker/Dockerfile, target: sail}
+    image: sparksched-sail:0.7.2
+    restart: unless-stopped
+    environment:
+      <<: *s3-env
+      AWS_ENDPOINT: http://minio:9000
+      AWS_ALLOW_HTTP: "true"
+      SAIL_MODE: local
+      # Sail's default memory pool is unbounded: it grows until the container is OOM-killed.
+      # A fair pool below mem_limit makes sorts/aggregates spill instead (see bench/README.md).
+      SAIL_RUNTIME__MEMORY_POOL__TYPE: fair
+      SAIL_RUNTIME__MEMORY_POOL__FAIR__MAX_SIZE: "1503238553"   # 1.4 GiB of the 2 GiB limit
+      SAIL_RUNTIME__TEMPORARY_FILES__PATHS: '["/tmp"]'
+      RUST_LOG: info
+    ports: ["50051:50051"]
+    mem_limit: 2g
+    depends_on:
+      minio: {condition: service_healthy}
+
   scheduler:
     build: {context: ., dockerfile: docker/Dockerfile, target: scheduler}
     image: sparksched:dev
@@ -79,6 +102,7 @@ services:
       DRIVER_HOST: scheduler
       MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-3}
       TICK_SECONDS: "3"
+      SAIL_REMOTE: sc://sail:50051
     volumes:
       - sched-logs:/var/log/sparksched
       - ./jobs:/opt/sparksched/jobs:ro
@@ -87,6 +111,7 @@ services:
       postgres: {condition: service_healthy}
       minio: {condition: service_healthy}
       spark-master: {condition: service_started}
+      sail: {condition: service_started}
 
   api:
     build: {context: ., dockerfile: docker/Dockerfile, target: scheduler}

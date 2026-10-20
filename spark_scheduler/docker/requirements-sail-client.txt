@@ -1,0 +1,9 @@
+# Spark Connect client dependencies for engine: sail jobs. pyspark itself comes from the
+# Spark image (/opt/spark/python), so Spark and Sail jobs import the same PySpark 3.5.8.
+# pyspark 3.5 needs numpy < 2, and pyarrow 18+ needs numpy >= 2.
+numpy==1.26.4
+pandas==2.2.3
+pyarrow==17.0.0
+grpcio==1.84.0
+grpcio-status==1.84.0
+googleapis-common-protos==1.75.5

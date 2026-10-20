@@ -117,3 +117,37 @@ def test_scheduler_restart_mid_run(api):
     assert res["state"] == "SUCCEEDED"
     assert [a["state"] for a in res["attempt_details"]] == ["LOST", "SUCCEEDED"]
     assert len(api.get("/runs", params={"batch_id": batch["batch_id"]}).json()) == 1
+
+
+def test_sail_engine_batch(api):
+    """The same scripts on Sail: retries, timeout (which must interrupt the Sail session),
+    Delta ingest + MERGE, and Spark reading the table Sail wrote."""
+    res = wait_batch(api, trigger(api, "e2e_sail_ingest", "e2e_sail_flaky", "e2e_sail_slow")["batch_id"])
+
+    assert res["e2e_sail_ingest"]["state"] == "SUCCEEDED"
+    flaky = res["e2e_sail_flaky"]
+    assert [a["state"] for a in flaky["attempt_details"]] == ["FAILED", "FAILED", "SUCCEEDED"]
+    assert all(a["ui_port"] is None and a["app_id"] is None for a in flaky["attempt_details"])
+
+    slow = res["e2e_sail_slow"]
+    assert [a["state"] for a in slow["attempt_details"]] == ["TIMED_OUT", "TIMED_OUT"]
+    log = api.get(f"/runs/{slow['run_id']}/attempts/1/log", params={"tail": 50}).text
+    assert "interrupted 1 operation(s)" in log, log
+
+    for name in ("e2e_sail_merge", "e2e_sail_verify", "e2e_spark_reads_sail_table"):
+        run = wait_batch(api, trigger(api, name)["batch_id"])[name]
+        assert run["state"] == "SUCCEEDED", api.get(f"/runs/{run['run_id']}/attempts/1/log").text
+
+
+def test_cancel_running_sail_job(api):
+    batch = trigger(api, "e2e_sail_slow")
+    run_id = batch["runs"][0]["run_id"]
+    deadline = time.time() + 120
+    while api.get(f"/runs/{run_id}").json()["state"] != "RUNNING":
+        assert time.time() < deadline
+        time.sleep(2)
+    time.sleep(5)
+    api.post(f"/runs/{run_id}/cancel").raise_for_status()
+    res = wait_batch(api, batch["batch_id"], timeout=120)["e2e_sail_slow"]
+    assert res["state"] == "CANCELLED"
+    assert "interrupted 1 operation(s)" in api.get(f"/runs/{run_id}/attempts/1/log").text
