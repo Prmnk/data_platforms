@@ -160,6 +160,7 @@ def job_status(s: Session, now: Optional[datetime] = None) -> List[Dict]:
         rows.append({
             "job": job.name,
             "enabled": job.enabled,
+            "engine": job.spec.get("engine", "spark"),
             "schedule": job.schedule,
             "next_fire_at": iso(next_fire(job.schedule, max(now, job.last_scheduled_at or now)))
             if job.enabled else None,

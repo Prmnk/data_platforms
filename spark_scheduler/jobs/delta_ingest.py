@@ -1,12 +1,14 @@
 """Generate a day's worth of synthetic orders and write them to a Delta table on MinIO.
 
 Re-running for the same --date replaces that date's rows (replaceWhere), so retries
-never duplicate data.
+never duplicate data. Runs unchanged on Spark and on Sail.
 """
 import argparse
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+
+from delta_util import delta_table_exists
 
 p = argparse.ArgumentParser()
 p.add_argument("--date", required=True, help="logical date, ISO format")
@@ -26,11 +28,13 @@ orders = (
         F.current_timestamp().alias("ingested_at"),
     )
 )
-(orders.write.format("delta")
-    .mode("overwrite")
-    .option("replaceWhere", f"order_date = '{day}'")
-    .partitionBy("order_date")
-    .save(a.path))
+writer = orders.write.format("delta").partitionBy("order_date")
+if delta_table_exists(spark, a.path):
+    writer.mode("overwrite").option("replaceWhere", f"order_date = '{day}'").save(a.path)
+else:
+    # First run creates the table. Sail rejects replaceWhere on a table that does not exist
+    # yet; append (not overwrite) so two first runs for different days cannot wipe each other.
+    writer.mode("append").save(a.path)
 
 n = spark.read.format("delta").load(a.path).where(F.col("order_date") == day).count()
 print(f"wrote {n} orders for {day} to {a.path}")

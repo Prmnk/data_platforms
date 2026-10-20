@@ -180,7 +180,7 @@ class Scheduler:
                 continue
             if per_job.get(run.job_name, 0) >= spec.concurrency:
                 continue
-            port = self._free_port(used_ports)
+            port = self._free_port(used_ports) if spec.engine == "spark" else None  # no Spark UI on Sail
             attempt_no = run.attempt_count + 1
             req = LaunchRequest(spec=spec, run_id=run.id, attempt_no=attempt_no,
                                 logical_date=run.logical_date, ui_port=port)

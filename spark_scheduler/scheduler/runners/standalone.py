@@ -13,7 +13,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import httpx
 
@@ -75,14 +75,20 @@ class SparkSubmitRunner:
         )
         return cmd
 
-    def launch(self, req: LaunchRequest) -> Handle:
+    def log_path_for(self, req: LaunchRequest) -> Path:
         log_dir = Path(self.s.log_dir) / req.spec.name / str(req.run_id)
         log_dir.mkdir(parents=True, exist_ok=True)
-        log_path = log_dir / f"attempt-{req.attempt_no}.log"
+        return log_dir / f"attempt-{req.attempt_no}.log"
+
+    def launch(self, req: LaunchRequest) -> Handle:
+        return self.spawn(req, self.build_command(req), self.log_path_for(req))
+
+    def spawn(self, req: LaunchRequest, cmd: List[str], log_path: Path,
+              extra_env: Optional[Dict[str, str]] = None) -> Handle:
+        """Start `cmd` in its own process group, wrapped so its exit code lands in <log>.exit."""
         exit_file = exit_file_for(str(log_path))
         exit_file.unlink(missing_ok=True)
 
-        cmd = self.build_command(req)
         env = dict(os.environ)
         env.update(
             SPARKSCHED_EXIT_FILE=str(exit_file),
@@ -90,6 +96,7 @@ class SparkSubmitRunner:
             SPARKSCHED_RUN_ID=str(req.run_id),
             SPARKSCHED_ATTEMPT=str(req.attempt_no),
         )
+        env.update(extra_env or {})
         with open(log_path, "ab") as logf:
             logf.write(("$ " + " ".join(cmd) + "\n").encode())
             logf.flush()

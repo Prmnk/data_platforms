@@ -20,8 +20,10 @@ jobs:
     retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 10}
   - name: b
     app: /x/b.py
+    engine: sail
 """)
     a, b = jf.jobs
+    assert a.engine == "spark" and b.engine == "sail"
     assert a.spark_conf["spark.cores.max"] == "2"
     assert a.retry.max_attempts == 3 and a.retry.backoff == "fixed"
     assert b.schedule is None and b.retry.max_attempts == 1 and b.concurrency == 1
@@ -32,6 +34,7 @@ jobs:
     {"name": "a", "app": "x", "schedule": "not cron"},
     {"name": "a", "app": "x", "retry": {"backoff": "linear"}},
     {"name": "a", "app": "x", "retry": {"max_attempts": 0}},
+    {"name": "a", "app": "x", "engine": "flink"},
 ])
 def test_invalid_specs(bad):
     with pytest.raises(ValidationError):

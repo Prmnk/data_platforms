@@ -165,6 +165,15 @@ def test_global_and_per_job_concurrency(sf, sched, runner, clock, settings):
     assert len(runs(sf, state="RUNNING")) == 6
 
 
+def test_sail_attempts_do_not_take_a_ui_port(sf, sched, runner, clock):
+    apply(sf, clock, job("on_spark"), job("on_sail", engine="sail"))
+    runner.script.update(on_spark=["hang"], on_sail=["hang"])
+    trigger(sf, clock, "on_spark", "on_sail")
+    sched.tick()
+    ports = {r.spec.name: r.ui_port for r in runner.launched}
+    assert ports == {"on_spark": 4040, "on_sail": None}
+
+
 def test_recovery_adopts_running_attempts(sf, runner, settings, clock):
     apply(sf, clock, job("long", retry={"max_attempts": 2, **NO_JITTER}))
     runner.script["long"] = ["hang", 0]
@@ -205,7 +214,7 @@ def test_deleted_job_cancels_pending_run(sf, sched, clock):
 
 
 def test_job_status_rows(sf, sched, runner, clock):
-    apply(sf, clock, job("ok", schedule="0 * * * *"), job("ko", retry={"max_attempts": 1}))
+    apply(sf, clock, job("ok", schedule="0 * * * *"), job("ko", engine="sail", retry={"max_attempts": 1}))
     runner.script["ko"] = [1]
     trigger(sf, clock, "ok", "ko")
     sched.tick()
@@ -216,6 +225,7 @@ def test_job_status_rows(sf, sched, runner, clock):
     assert rows["ok"]["last_state"] == "SUCCEEDED" and rows["ok"]["succeeded_24h"] == 1
     assert rows["ok"]["next_fire_at"] == "2026-01-01T13:00:00Z"
     assert rows["ko"]["last_state"] == "DEAD" and rows["ko"]["dead_24h"] == 1
+    assert rows["ok"]["engine"] == "spark" and rows["ko"]["engine"] == "sail"
     assert summ["runs_by_state"]["SUCCEEDED"] == 1 and summ["scheduler"]["heartbeat_age_s"] == 0
 
 

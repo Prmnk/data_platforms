@@ -24,7 +24,7 @@ class DbCollector(Collector):
         now = utcnow()
         since = now - timedelta(hours=24)
         with self.sf() as s:
-            info = GaugeMetricFamily("sparksched_job_info", "Registered jobs", labels=["job", "schedule", "enabled"])
+            info = GaugeMetricFamily("sparksched_job_info", "Registered jobs", labels=["job", "schedule", "enabled", "engine"])
             last_state = GaugeMetricFamily(
                 "sparksched_job_last_run_state", "1 for the state of the job's latest run",
                 labels=["job", "state"])
@@ -35,7 +35,8 @@ class DbCollector(Collector):
                 "sparksched_job_last_run_duration_seconds", "Duration of the latest finished run",
                 labels=["job"])
             for job in s.scalars(select(Job)):
-                info.add_metric([job.name, job.schedule or "", str(job.enabled).lower()], 1)
+                info.add_metric([job.name, job.schedule or "", str(job.enabled).lower(),
+                                 job.spec.get("engine", "spark")], 1)
                 last = s.scalars(select(JobRun).where(JobRun.job_name == job.name)
                                  .order_by(JobRun.created_at.desc(), JobRun.id.desc()).limit(1)).first()
                 for st in m.RUN_STATES:

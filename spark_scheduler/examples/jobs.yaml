@@ -1,6 +1,7 @@
 # Apply with:  sched apply -f examples/jobs.yaml
 # Cron schedules are UTC. Paths are inside the scheduler container.
 # Arg placeholders: {{ logical_date }}, {{ run_id }}, {{ attempt }}, {{ job }}
+# engine: spark (default, spark-submit to the cluster) or sail (Spark Connect to the sail service).
 jobs:
   - name: orders_ingest
     description: Synthetic orders -> s3a://warehouse/orders (Delta, replaceWhere per day)
@@ -31,3 +32,52 @@ jobs:
     args: ["--seconds", "300"]
     timeout_s: 60
     retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 10, retry_on_timeout: true}
+
+  # The same ingest + merge on Sail, into separate tables (manual trigger: `make demo-sail`).
+  - name: orders_ingest_sail
+    engine: sail
+    description: Same as orders_ingest, run on Sail -> s3a://warehouse/sail_orders
+    app: /opt/sparksched/jobs/delta_ingest.py
+    args: ["--date", "{{ logical_date }}", "--path", "s3a://warehouse/sail_orders", "--rows", "20000"]
+    retry: {max_attempts: 3, backoff: exponential, initial_delay_s: 20, max_delay_s: 300}
+    timeout_s: 900
+
+  - name: customers_merge_sail
+    engine: sail
+    description: Same as customers_merge, run on Sail -> s3a://warehouse/sail_customers
+    app: /opt/sparksched/jobs/delta_merge.py
+    args: ["--orders", "s3a://warehouse/sail_orders", "--path", "s3a://warehouse/sail_customers"]
+    retry: {max_attempts: 3, backoff: fixed, initial_delay_s: 30}
+    timeout_s: 900
+
+  # Ingestion pipeline (schema checks -> quarantine, dedup, Delta MERGE), the workload compared
+  # in bench/. Generate input first: sched run gen_orders_batch1 gen_orders_batch2 --wait
+  - name: gen_orders_batch1
+    description: Raw order events with duplicates and bad rows -> s3a://warehouse/landing/orders/batch=1
+    app: /opt/sparksched/jobs/gen_raw_orders.py
+    args: ["--batch", "1", "--events", "200000"]
+    timeout_s: 1800
+
+  - name: gen_orders_batch2
+    description: Second batch (half updates to batch 1 orders) -> landing/orders/batch=2
+    app: /opt/sparksched/jobs/gen_raw_orders.py
+    args: ["--batch", "2", "--events", "200000"]
+    timeout_s: 1800
+
+  - name: orders_pipeline_spark
+    description: Ingest landing batch 1 into s3a://warehouse/silver/orders_spark (Spark)
+    app: /opt/sparksched/jobs/ingest_pipeline.py
+    args: ["--batch", "1", "--silver", "s3a://warehouse/silver/orders_spark",
+           "--quarantine", "s3a://warehouse/quarantine/orders_spark"]
+    spark_conf: {spark.cores.max: "2"}
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 30}
+    timeout_s: 3600
+
+  - name: orders_pipeline_sail
+    engine: sail
+    description: The same pipeline on Sail -> s3a://warehouse/silver/orders_sail
+    app: /opt/sparksched/jobs/ingest_pipeline.py
+    args: ["--batch", "1", "--silver", "s3a://warehouse/silver/orders_sail",
+           "--quarantine", "s3a://warehouse/quarantine/orders_sail"]
+    retry: {max_attempts: 2, backoff: fixed, initial_delay_s: 30}
+    timeout_s: 3600

@@ -68,3 +68,4 @@ def test_metrics(client, sched):
     assert 'sparksched_runs{state="SUCCEEDED"} 1.0' in body
     assert "sparksched_scheduler_heartbeat_timestamp_seconds" in body
     assert 'sparksched_attempts_24h{job="a",outcome="SUCCEEDED"} 1.0' in body
+    assert 'sparksched_job_info{enabled="true",engine="spark",job="a",schedule=""} 1.0' in body

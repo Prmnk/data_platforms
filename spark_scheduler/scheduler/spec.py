@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional
+from typing import Dict, List, Literal, Optional
 
 import yaml
 from croniter import croniter
@@ -28,6 +28,8 @@ class JobSpec(BaseModel):
     # Cron expression (UTC). None = only runs when triggered manually.
     schedule: Optional[str] = None
     enabled: bool = True
+    # spark: spark-submit to the standalone cluster. sail: plain Python over Spark Connect to Sail.
+    engine: Literal["spark", "sail"] = "spark"
     app: str = Field(..., description="Path to the PySpark script (local to the scheduler image).")
     py_files: List[str] = Field(default_factory=list)
     args: List[str] = Field(default_factory=list)

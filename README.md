@@ -9,7 +9,7 @@ monitoring) and runs on a laptop with Docker.
 | Project | What it shows | Stack |
 |---|---|---|
 | [**feature_store**](feature_store/) | Real-time user features for fraud / credit-risk APIs: today, MTD, YTD, 12-month monthly history (seasonality), hourly velocity and profile attributes, served in single-digit milliseconds. Includes parity checks against raw events, crash recovery, blue/green rebuilds and a backfill design. | Redpanda, Flink (Java), ScyllaDB, FastAPI, Prometheus, Grafana |
-| [**spark_scheduler**](spark_scheduler/) | A small self-hosted scheduler for Spark jobs without Airflow: cron schedules, per-job retry policies, timeouts and concurrency limits, REST API and CLI. | Spark 3.5 standalone, Delta Lake, MinIO, Postgres, Prometheus, Grafana |
+| [**spark_scheduler**](spark_scheduler/) | A small self-hosted scheduler for Spark jobs without Airflow: cron schedules, per-job retry policies, timeouts and concurrency limits, REST API and CLI. Each job runs on Spark or on [Sail](https://github.com/lakehq/sail), with a [Spark vs Sail benchmark](spark_scheduler/bench/README.md) of an ingestion pipeline. | Spark 3.5 standalone, Sail 0.7, Delta Lake, MinIO, Postgres, Prometheus, Grafana |
 | [**cdc_monitoring**](cdc_monitoring/) | Change Data Capture from Postgres into Redpanda with Debezium, and a Python consumer turning order events into live metrics. | Postgres, Debezium, Redpanda, Python, PushGateway, Prometheus, Grafana |
 | [**kafka-local**](kafka-local/) | A 3-broker Kafka cluster with JMX metrics, used for producer experiments (`acks=0/1/all`) and to see where produce latency goes. | Kafka + ZooKeeper, JMX exporter, Prometheus, Grafana |
 
@@ -44,7 +44,7 @@ before starting the next (`make down`, or `docker compose down`).
 | Project | Docker memory | Main local ports |
 |---|---|---|
 | feature_store | ~4 GB | Grafana 3000, API 8000, Console 8080, Flink 8081, Prometheus 9090, CQL 9042, Kafka 19092 |
-| spark_scheduler | ~6 GB; on smaller machines `MAX_CONCURRENT_RUNS=2 make up` | Grafana 3001, API 8000, Spark 8088, MinIO 9000/9001, Prometheus 9095 |
+| spark_scheduler | ~6 GB; on smaller machines `MAX_CONCURRENT_RUNS=2 make up` | Grafana 3001, API 8000, Spark 8088, Sail 50051, MinIO 9000/9001, Prometheus 9095 |
 | cdc_monitoring | not measured | Grafana 3000, Console 8080, Kafka Connect 8083, Prometheus 9090, PushGateway 9091, Postgres 5432, Kafka 19092 |
 | kafka-local | not measured | Grafana 3000, Prometheus 9090, brokers 9091–9093, ZooKeeper 2181 |
 
