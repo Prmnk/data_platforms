@@ -10,6 +10,7 @@ monitoring) and runs on a laptop with Docker.
 |---|---|---|
 | [**feature_store**](feature_store/) | Real-time user features for fraud / credit-risk APIs: today, MTD, YTD, 12-month monthly history (seasonality), hourly velocity and profile attributes, served in single-digit milliseconds. Includes parity checks against raw events, crash recovery, blue/green rebuilds and a backfill design. | Redpanda, Flink (Java), ScyllaDB, FastAPI, Prometheus, Grafana |
 | [**spark_scheduler**](spark_scheduler/) | A small self-hosted scheduler for Spark jobs without Airflow: cron schedules, per-job retry policies, timeouts and concurrency limits, REST API and CLI. Each job runs on Spark or on [Sail](https://github.com/lakehq/sail), with a [Spark vs Sail benchmark](spark_scheduler/bench/README.md) of an ingestion pipeline. | Spark 3.5 standalone, Sail 0.7, Delta Lake, MinIO, Postgres, Prometheus, Grafana |
+| [**sail_lab**](sail_lab/) | A sandbox for Sail on its own, with no scheduler: submit PySpark jobs, uploaded scripts or SQL, then follow each run in Grafana through Sail's own operator metrics, query traces and logs. Includes Delta, Iceberg, UDF and spill examples, plus a table of Sail-vs-Spark findings. | Sail 0.7, PySpark 3.5 (Spark Connect), MinIO, FastAPI, OpenTelemetry, Prometheus, Loki, Tempo, Grafana |
 | [**cdc_monitoring**](cdc_monitoring/) | Change Data Capture from Postgres into Redpanda with Debezium, and a Python consumer turning order events into live metrics. | Postgres, Debezium, Redpanda, Python, PushGateway, Prometheus, Grafana |
 | [**kafka-local**](kafka-local/) | A 3-broker Kafka cluster with JMX metrics, used for producer experiments (`acks=0/1/all`) and to see where produce latency goes. | Kafka + ZooKeeper, JMX exporter, Prometheus, Grafana |
 
@@ -28,6 +29,7 @@ monitoring) and runs on a laptop with Docker.
 - **kafka-local** looks at the bus itself: durability settings and their latency cost.
 - **feature_store** turns events into low-latency features for online decisions.
 - **spark_scheduler** runs the batch side: scheduled Spark/Delta jobs on object storage, each on Spark or on Sail. The feature store's backfill design (see its README) is where the two meet.
+- **sail_lab** is a place to experiment with Sail directly and see what the engine does on each run.
 
 ## Batch jobs on Spark or Sail
 
@@ -96,6 +98,7 @@ before starting the next (`make down`, or `docker compose down`).
 |---|---|---|
 | feature_store | ~4 GB | Grafana 3000, API 8000, Console 8080, Flink 8081, Prometheus 9090, CQL 9042, Kafka 19092 |
 | spark_scheduler | ~6 GB; on smaller machines `MAX_CONCURRENT_RUNS=2 make up` | Grafana 3001, API 8000, Spark 8088, Sail 50051, MinIO 9000/9001, Prometheus 9095 |
+| sail_lab | ~3 GB | Grafana 3002, API 8010, Sail 50052, MinIO 9010/9011, Prometheus 9097, Jupyter 8890 |
 | cdc_monitoring | not measured | Grafana 3000, Console 8080, Kafka Connect 8083, Prometheus 9090, PushGateway 9091, Postgres 5432, Kafka 19092 |
 | kafka-local | not measured | Grafana 3000, Prometheus 9090, brokers 9091–9093, ZooKeeper 2181 |
 
@@ -105,9 +108,10 @@ before starting the next (`make down`, or `docker compose down`).
 data_platforms/
 ├── feature_store/      # Redpanda → Flink → Scylla → Feature API
 ├── spark_scheduler/    # cron + retries for Spark/Delta jobs, on Spark or Sail (+ bench/)
+├── sail_lab/           # Sail sandbox: submit jobs, watch the engine in Grafana
 ├── cdc_monitoring/     # Postgres → Debezium → Redpanda → metrics
 ├── kafka-local/        # 3-broker Kafka + JMX metrics experiments
-└── .github/workflows/  # CI (spark_scheduler: unit tests on push/PR, nightly end-to-end)
+└── .github/workflows/  # CI (spark_scheduler: unit tests on push/PR, nightly end-to-end; sail_lab: unit tests)
 ```
 
 ## Conventions

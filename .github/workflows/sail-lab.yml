@@ -1,0 +1,41 @@
+name: sail-lab
+
+on:
+  push:
+    paths: ["sail_lab/**", ".github/workflows/sail-lab.yml"]
+  pull_request:
+    paths: ["sail_lab/**"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: sail_lab
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install -r requirements-dev.txt && pip install --no-deps -e .
+      - run: python -m pytest -q
+      - name: dashboards are generated from build_dashboards.py
+        run: python grafana/build_dashboards.py && git diff --exit-code grafana/dashboards
+
+  e2e:
+    if: github.event_name == 'workflow_dispatch'
+    needs: unit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install -r requirements-dev.txt
+      - run: docker compose up -d --build --wait lab-api
+      - run: python -m pytest -q -m e2e tests/e2e
+      - if: failure()
+        run: docker compose logs --no-color lab-api sail otel-collector | tail -300
+      - if: always()
+        run: docker compose down -v

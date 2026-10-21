@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: sail-lab
+    folder: Sail Lab
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

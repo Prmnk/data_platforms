@@ -1,0 +1,10 @@
+# Spark Connect client dependencies, installed in BOTH the Sail server image and the lab image.
+# Sail runs Python UDFs by unpickling them with pyspark, so server and clients must share the
+# Python minor version and these pins (the same rule as Spark's driver/executor Python).
+# pyspark 3.5 needs numpy < 2, and pyarrow 18+ needs numpy >= 2.
+numpy==1.26.4
+pandas==2.2.3
+pyarrow==17.0.0
+grpcio==1.84.0
+grpcio-status==1.84.0
+googleapis-common-protos==1.75.5

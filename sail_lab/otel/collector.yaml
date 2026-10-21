@@ -1,0 +1,69 @@
+# Sail -> (OTLP) -> collector -> Prometheus (metrics), Tempo (traces), Loki (logs).
+# Run logs written by lab-api are tailed here too, tagged with their run_id.
+extensions:
+  file_storage:
+    directory: /var/lib/otelcol   # remembers how far each run log was read
+
+receivers:
+  otlp:
+    protocols:
+      grpc: {endpoint: 0.0.0.0:4317}
+      http: {endpoint: 0.0.0.0:4318}
+
+  filelog/runs:
+    include: [/var/log/lab/runs/*.log]
+    exclude_older_than: 24h       # finished runs' logs are already in Loki
+    poll_interval: 1s
+    start_at: beginning
+    include_file_name: true
+    storage: file_storage
+    resource:
+      service.name: lab-run
+    operators:
+      - type: regex_parser
+        parse_from: attributes["log.file.name"]
+        regex: '^(?P<run_id>[0-9a-f-]{36})\.log$'
+
+processors:
+  batch: {}
+  # Sail reports every operator metric once per partition. Sum partitions away so a run
+  # costs (queries x operators) series, not (queries x operators x partitions).
+  metricstransform/drop_partition:
+    transforms:
+      - include: ^execution_.*
+        match_type: regexp
+        action: update
+        operations:
+          - action: aggregate_labels
+            label_set: [session_id, execution_job_id, execution_operator_id, execution_operator_name]
+            aggregation_type: sum
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Sail exports these as gauges for the lifetime of a query. Keep finished queries
+    # around long enough for Prometheus to scrape their final values.
+    metric_expiration: 3m
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls: {insecure: true}
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+
+service:
+  extensions: [file_storage]
+  telemetry:
+    logs: {level: warn}
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [metricstransform/drop_partition, batch]
+      exporters: [prometheus]
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/tempo]
+    logs:
+      receivers: [otlp, filelog/runs]
+      processors: [batch]
+      exporters: [otlphttp/loki]

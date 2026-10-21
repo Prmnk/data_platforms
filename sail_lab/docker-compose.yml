@@ -1,0 +1,168 @@
+name: sail-lab
+
+# Ports are chosen not to clash with the other projects in this repo (see the root README).
+
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+  AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+  AWS_REGION: us-east-1
+  AWS_ENDPOINT: http://minio:9000
+  AWS_ALLOW_HTTP: "true"
+
+volumes:
+  minio-data: null
+  lab-data: null
+  lab-logs: null
+  otel-state: null
+  loki-data: null
+  tempo-data: null
+  prometheus-data: null
+  grafana-data: null
+
+services:
+  # ------------------------------------------------------------------ storage
+  minio:
+    # The official minio/minio image is no longer published on Docker Hub; this is the
+    # last Bitnami build. Override with MINIO_IMAGE if you build/host your own.
+    image: ${MINIO_IMAGE:-bitnamilegacy/minio:2025.4.22}
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_DEFAULT_BUCKETS: lake,landing
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+    ports: ["9010:9000", "9011:9001"]
+    volumes: [minio-data:/bitnami/minio/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ------------------------------------------------------------------ engine
+  sail:
+    build: {context: ., dockerfile: docker/Dockerfile, target: sail}
+    image: sail-lab-sail:0.7.2
+    restart: unless-stopped
+    environment:
+      <<: *s3-env
+      SAIL_MODE: local
+      # Bound Sail's memory pool below the container limit, so big sorts/aggregations spill
+      # to disk (visible on the dashboard) instead of the container being OOM-killed.
+      SAIL_RUNTIME__MEMORY_POOL__TYPE: fair
+      SAIL_RUNTIME__MEMORY_POOL__FAIR__MAX_SIZE: ${SAIL_MEMORY_POOL_BYTES:-1288490188}  # 1.2 GiB
+      # Engine telemetry: per-operator metrics, query traces and server logs over OTLP.
+      SAIL_TELEMETRY__EXPORT_METRICS: "true"
+      SAIL_TELEMETRY__EXPORT_TRACES: "true"
+      SAIL_TELEMETRY__EXPORT_LOGS: "true"
+      SAIL_TELEMETRY__EXPORTER__OTLP__ENDPOINT: http://otel-collector:4317
+      RUST_LOG: ${SAIL_LOG_LEVEL:-info}
+    ports: ["50052:50051"]   # sc://localhost:50052 for notebooks/scripts on your machine
+    mem_limit: ${SAIL_MEM_LIMIT:-2g}
+    depends_on:
+      minio: {condition: service_healthy}
+      otel-collector: {condition: service_started}
+
+  # ------------------------------------------------------------------ submit service
+  lab-api:
+    build: {context: ., dockerfile: docker/Dockerfile, target: lab}
+    image: sail-lab:dev
+    restart: unless-stopped
+    init: true                 # reap job processes
+    environment:
+      <<: *s3-env
+      SAIL_REMOTE: sc://sail:50051
+      MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-2}
+      GRAFANA_PUBLIC_URL: http://localhost:3002
+    volumes:
+      - lab-data:/var/lib/lab
+      - lab-logs:/var/log/lab
+      - ./jobs:/opt/lab/jobs:ro          # edit or add jobs without rebuilding
+    ports: ["8010:8010"]
+    mem_limit: ${LAB_MEM_LIMIT:-1536m}   # the PySpark clients run here
+    depends_on: [sail]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8010/healthz')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Per-container CPU/memory from cgroup files (cAdvisor cannot map containers on Docker Desktop).
+  container-stats:
+    image: sail-lab:dev
+    command: ["python", "-m", "saillab", "containers"]
+    restart: unless-stopped
+    environment:
+      COMPOSE_PROJECT: sail-lab
+      CGROUP_ROOT: /host/cgroup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /sys/fs/cgroup:/host/cgroup:ro
+    depends_on: [lab-api]
+
+  # ------------------------------------------------------------------ observability
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.111.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    restart: unless-stopped
+    user: "0"                  # reads run logs written by lab-api, keeps tail offsets in otel-state
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol/config.yaml:ro
+      - lab-logs:/var/log/lab:ro
+      - otel-state:/var/lib/otelcol
+    depends_on: [loki, tempo]
+
+  loki:
+    image: grafana/loki:3.2.1
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    volumes:
+      - ./loki/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
+
+  tempo:
+    image: grafana/tempo:2.6.1
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    user: "0"
+    volumes:
+      - ./tempo/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports: ["9097:9090"]
+    depends_on: [lab-api, otel-collector]
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"      # local showcase: dashboards open without login
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_INSTALL_PLUGINS: yesoreyeram-infinity-datasource
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/overview.json
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["3002:3000"]
+    depends_on: [prometheus, loki, tempo]
+
+  # ------------------------------------------------------------------ optional: JupyterLab
+  # make notebook  (bound to localhost only: it runs code without a token)
+  notebook:
+    profiles: [notebook]
+    build: {context: ., dockerfile: docker/Dockerfile, target: notebook}
+    image: sail-lab-notebook:dev
+    environment:
+      <<: *s3-env
+      SPARK_REMOTE: sc://sail:50051
+    volumes:
+      - ./notebooks:/opt/lab/notebooks
+      - ./jobs:/opt/lab/jobs:ro
+    ports: ["127.0.0.1:8890:8888"]
+    depends_on: [sail]

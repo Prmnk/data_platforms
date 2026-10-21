@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "saillab"
+version = "0.1.0"
+description = "Submit PySpark/SQL jobs to a LakeSail server and watch them in Grafana"
+requires-python = ">=3.9"
+
+[project.scripts]
+lab = "saillab.cli:main"
+
+[tool.setuptools]
+packages = ["saillab"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+markers = ["e2e: needs the docker compose stack (make up)"]
