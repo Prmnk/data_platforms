@@ -1,0 +1,18 @@
+global:
+  scrape_interval: 5s        # runs are short; 5s keeps their curves readable
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: lab-api          # runs submitted/finished, durations, per-run info and results
+    static_configs: [{targets: ["lab-api:8010"]}]
+
+  - job_name: sail             # Sail engine metrics, via the OTel collector
+    honor_labels: true         # keep Sail's own job="sail-server" label
+    static_configs: [{targets: ["otel-collector:8889"]}]
+
+  - job_name: containers       # CPU/memory per compose service
+    static_configs: [{targets: ["container-stats:9200"]}]
+
+  - job_name: minio            # S3 requests and bytes in/out
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs: [{targets: ["minio:9000"]}]

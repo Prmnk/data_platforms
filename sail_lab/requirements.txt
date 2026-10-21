@@ -1,0 +1,4 @@
+# Submit service (API + container stats). The PySpark client pins are in docker/requirements-client.txt.
+fastapi==0.115.4
+uvicorn==0.32.0
+prometheus-client==0.21.0
